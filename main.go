@@ -78,10 +78,10 @@ func hashcode(x string)string{
 }
 
 //add a student account given its ID(11 bit) and password. Only worked when using administrator account.
-func (x *User)Register(id,password string)error{
+func (x *User)Register(id,password string,hash func(string)string)error{
     if x.Authority!=Admin{return fmt.Errorf("This operation is only executable by a administrator account.")}
     if len(id)!=11{return fmt.Errorf("ID length incorrect.")}//check whether id is correct.
-    s:=hashcode(password)//use sha256 to encrypt the password
+    s:=hash(password)//use sha256 to encrypt the password
     _,err:=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
     if err!=nil{return fmt.Errorf("Register %s:%v",id,err)}
     return nil
@@ -114,6 +114,6 @@ func main(){
     //defer func(){db.Exec("drop database fudanlms;")}()
     db.Exec("use fudanlms;");
     CreateTable()
-    
+
     fmt.Println("Done.")
 }
