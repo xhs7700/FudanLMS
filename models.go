@@ -1,6 +1,7 @@
 package main
 
 import(
+    "fmt"
     "time"
 )
 
@@ -16,6 +17,8 @@ var AuthorityDict=map[int]string{
     2:"Suspended",
     3:"Guest",
 }
+
+var TimeFormat="2006-01-02 15:04:05"
 
 func (x User)String()string{return fmt.Sprintf("ID:%s\tAuthority:%s",x.ID,AuthorityDict[x.Authority])}
 
@@ -33,8 +36,7 @@ type BorRec struct{
 }
 
 func (x BorRec)String()string{
-    str:="2006-01-02 15:04:05"
-    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tDeadline:%s\tExtendTime:%d",x.User.ID,x.Book.Title,x.BorTime.Format(str),x.Deadline.Format(str),x.ExtendTime)
+    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tDeadline:%s\tExtendTime:%d",x.User.ID,x.Book.Title,x.BorTime.Format(TimeFormat),x.Deadline.Format(TimeFormat),x.ExtendTime)
 }
 
 type RetRec struct{
@@ -44,8 +46,7 @@ type RetRec struct{
 }
 
 func (x RetRec)String()string{
-    str:="2006-01-02 15:04:05"
-    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tRetTime:%s",x.User.ID,x.Book.Title,x.BorTime.Format(str),x.RetTime.Format(str))
+    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tRetTime:%s",x.User.ID,x.Book.Title,x.BorTime.Format(TimeFormat),x.RetTime.Format(TimeFormat))
 }
 
 var rawsql=[]string{

@@ -15,7 +15,6 @@ var(
     password="(644000)xhs"
     now time.Time
     db *sql.DB
-    err error
 )
 
 const(
@@ -50,24 +49,80 @@ func CreateTable(){
     }
 }
 
+func IDValidate(id string)error{
+    if len(id)!=11{
+        return fmt.Errorf("ID length incorrect.")
+    }
+    return nil
+}
+
+func ISBNValidate(isbn string)error{
+    if len(isbn)!=13{
+        if len(isbn)!=13{return fmt.Errorf("ISBN length incorrect.")}
+    }
+    return nil
+}
+
+func (x *User)UserValidate(Type int,Value string)error{
+    if x.Authority!=Type{
+        return fmt.Errorf("This operation is only executable by a %s account.",Value)
+    }
+    return nil
+}
+
 //Add a book given its title,author and isbn. Only worked when using administrator account.
 func (x *User)AddBook(title,author,isbn string)error{
-    if x.Authority!=Admin{return fmt.Errorf("This operation is only executable by a administrator account.")}
-    if len(isbn)!=13{return fmt.Errorf("ISBN length incorrect.")}//check whether isbn is correct.
-    _,err:=db.Exec("insert into books (isbn,title,author)values(?,?,?)",isbn,title,author)
+    var err error
+    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
+    err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
+    _,err=db.Exec("insert into books (isbn,title,author)values(?,?,?)",isbn,title,author)
     if err!=nil{return fmt.Errorf("AddBook %s:%v",title,err)}
     return nil
 }
 
+func IsFind(err error,name string)bool{
+    switch{
+    case err==sql.ErrNoRows:
+        return false
+    case err==nil:
+        return true
+    default:
+        panic(fmt.Errorf("%s:%v",name,err))
+    }
+}
+
+func FindStudent(id string)bool{
+    var err error
+    auth:=0
+    err=db.QueryRow("select authority from users where id=?;",id).Scan(&auth)
+    return IsFind(err,"FindStudent")
+}
+
+//FindBook returns whether a book exists given its ISBN.
+func FindBook(isbn string)bool{
+    var err error
+    title:=""
+    err=db.QueryRow("select title from books where isbn=?;",isbn).Scan(&title)
+    return IsFind(err,"FindBook")
+}
+
+func FindRec(id,isbn,recname string)bool{
+    var err error
+    find_id:=""
+    sql:=fmt.Sprintf("select id from %s where id=%s and isbn=%s;",recname,id,isbn)
+    //fmt.Println(sql)
+    err=db.QueryRow(sql).Scan(&find_id)
+    return IsFind(err,"Find"+recname)
+}
+
 //Remove a book given its isbn. Only worked when using administrator account and this book exists.
 func (x *User)RemoveBook(isbn string)error{
-    if x.Authority!=Admin{return fmt.Errorf("This operation is only executable by a administrator account.")}
-    if len(isbn)!=13{return fmt.Errorf("ISBN length incorrect.")}//check whether isbn is correct.
-    title:=""
-    err:=db.QueryRow("select title from books where isbn=?;",isbn).Scan(&title)
-    if err!=nil{return err}
+    var err error
+    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
+    err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
+    if FindBook(isbn)==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
     _,err=db.Exec("delete from books where isbn=?;",isbn)
-    if err!=nil{return fmt.Errorf("RemoveBook %s:%v",title,err)}
+    if err!=nil{return fmt.Errorf("RemoveBook %s:%v",isbn,err)}
     return nil
 }
 
@@ -79,21 +134,26 @@ func hashcode(x string)string{
 
 //add a student account given its ID(11 bit) and password. Only worked when using administrator account.
 func (x *User)Register(id,password string,hash func(string)string)error{
-    if x.Authority!=Admin{return fmt.Errorf("This operation is only executable by a administrator account.")}
-    if len(id)!=11{return fmt.Errorf("ID length incorrect.")}//check whether id is correct.
+    var err error
+    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
+    err=IDValidate(id);if err!=nil{return err}//check whether id is correct.
     s:=hash(password)//use sha256 to encrypt the password
-    _,err:=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
+    _,err=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
     if err!=nil{return fmt.Errorf("Register %s:%v",id,err)}
     return nil
 }
 
-func (x *User)QueryBook(Value,Type string)[]Book,error{
+//query books by title author or ISBN
+func (x *User)QueryBook(Value,Type string)([]Book,error){
+    var err error
+    var rows *sql.Rows
     if x.Authority==Guest{return nil,fmt.Errorf("Guest cannot query books.")}
-    BookList:=[]Book
-    rows,err:=db.Query("select * from books where ? = ?",Type,Value)
-    defer rows.Close()
-    Error:=func()[]Book,error{return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
+    BookList:=[]Book{}
+    Error:=func()([]Book,error){return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
+    sql:=fmt.Sprintf("select * from books where %s=%s",Type,Value)
+    rows,err=db.Query(sql)
     if err!=nil{return Error()}
+    defer rows.Close()
     for rows.Next(){
         var book Book
         err=rows.Scan(&book.ISBN,&book.Title,&book.Author)
@@ -105,15 +165,36 @@ func (x *User)QueryBook(Value,Type string)[]Book,error{
     return BookList,nil
 }
 
+func (x *User)BorrowBook(isbn string)error{
+    var err error
+    err=x.UserValidate(Student,"stu");if err!=nil{return err}
+    err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
+    if FindBook(isbn)==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
+    if FindRec(x.ID,isbn,"borrec")==true{return fmt.Errorf("Borrow record already exist.")}
+    rawsql:=`
+    insert into borrec(id,isbn,bortime,deadline,extendtime)values
+        (%s,%s,%q,%q,0);
+    `
+    now:=time.Now()
+    ddl:=now.AddDate(0,0,30)
+    sql:=fmt.Sprintf(rawsql,x.ID,isbn,now.Format(TimeFormat),ddl.Format(TimeFormat))
+    //fmt.Println(sql)
+    _,err=db.Exec(sql)
+    if err!=nil{return fmt.Errorf("User %s borrows book %s:%v",x.ID,isbn,err)}
+    return nil
+}
+
 func main(){
+    var err error
     db,err=sql.Open("mysql",fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/",user,password))
     defer db.Close()
     checkErr(err)
     if err=db.Ping();err!=nil{log.Fatal(err)}
-    db.Exec("create database fudanlms;")
+    //db.Exec("create database fudanlms;")
     //defer func(){db.Exec("drop database fudanlms;")}()
     db.Exec("use fudanlms;");
-    CreateTable()
-
+    //CreateTable()
+    //adminUser:=User{"Admin","123456",Admin}
+    //stuUser:=User{"18307130090","(644000)xhs",Student}
     fmt.Println("Done.")
 }
