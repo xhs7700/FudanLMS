@@ -7,6 +7,7 @@ import(
     "crypto/sha256"
     "encoding/hex"
     "log"
+    "net/url"
     //"strings"
     _ "github.com/go-sql-driver/mysql"
 )
@@ -77,7 +78,7 @@ func (x *User)UserMultiValidate(Type []int,Value string)error{
     return fmt.Errorf("This operation is only executable by a %s account.",Value)
 }
 
-func SelectDababase(){db.Exec("use fudanlms;")}
+func SelectDatabase(){db.Exec("use fudanlms;")}
 
 //Add a book given its title,author and isbn. Only worked when using administrator account.
 func (x *User)AddBook(title,author,isbn string)error{
@@ -147,7 +148,7 @@ func (x *User)Register(id,password string,hash func(string)string)error{
     err=x.UserValidate(Admin,"admin");if err!=nil{return err}
     err=IDValidate(id);if err!=nil{return err}//check whether id is correct.
     s:=hash(password)//use sha256 to encrypt the password
-    db.Exec("use fudanlms;")
+    SelectDatabase()
     _,err=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
     if err!=nil{return fmt.Errorf("Register %s:%v",id,err)}
     return nil
@@ -161,7 +162,7 @@ func (x *User)QueryBook(Value,Type string)([]Book,error){
     BookList:=[]Book{}
     Error:=func()([]Book,error){return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
     sql:=fmt.Sprintf("select * from books where %s=%s",Type,Value)
-    db.Exec("use fudanlms;")
+    SelectDatabase()
     rows,err=db.Query(sql)
     if err!=nil{return Error()}
     defer rows.Close()
@@ -203,7 +204,7 @@ func (x *User)BorrowQuery(Type string)([]Book,error){
     var BookList,bookList []Book
     isbn:=""
     sql:=fmt.Sprintf("select isbn from %s where id=%s",Type,x.ID)
-    db.Exec("use fudanlms;")
+    SelectDatabase()
     rows,err=db.Query(sql)
     if err!=nil{return Error()}
     defer rows.Close()
@@ -216,15 +217,29 @@ func (x *User)BorrowQuery(Type string)([]Book,error){
     return BookList,nil
 }
 
+func GetDeadline(id,isbn string)(time.Time,error){
+    var err error
+    var deadline time.Time
+    sql:=fmt.Sprintf("select deadline from borrec where id=%s and isbn=%s;",id,isbn)
+    err=db.QueryRow(sql).Scan(&deadline)
+    fmt.Printf("Deadline:%v\n",deadline)
+    if err!=nil{return time.Now(),err}
+    return deadline,nil
+}
+
 func main(){
     var err error
-    db,err=sql.Open("mysql",fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/",user,password))
+    rawsql:=fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/?charset=utf8&loc=%s&parseTime=true",
+        user,
+        password,
+        url.QueryEscape("Asia/Shanghai"))
+    db,err=sql.Open("mysql",rawsql)
     defer db.Close()
     checkErr(err)
     if err=db.Ping();err!=nil{log.Fatal(err)}
     //db.Exec("create database fudanlms;")
     //defer func(){db.Exec("drop database fudanlms;")}()
-    db.Exec("use fudanlms;");
+    SelectDatabase()
     //CreateTable()
     //adminUser:=User{"Admin","123456",Admin}
     stuUser:=User{"18307130090","(644000)xhs",Student}
@@ -232,12 +247,10 @@ func main(){
         err=stuUser.BorrowBook(isbn)
         checkErr(err)
     }
-    var BookList []Book
-    BookList,err=stuUser.BorrowQuery("borrec")
+    var deadline time.Time
+    deadline,err=GetDeadline("18307130090","9787549550166")
     checkErr(err)
-    db.Exec("use fudanlms;")
-    _,err=db.Exec("delete from borrec;")
-    checkErr(err)
-    fmt.Println(BookList)
+    SelectDatabase();db.Exec("delete from borrec;")
+    fmt.Println(deadline)
     fmt.Println("Done.")
 }
