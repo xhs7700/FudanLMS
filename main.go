@@ -7,13 +7,13 @@ import(
     "crypto/sha256"
     "encoding/hex"
     "log"
+    //"strings"
     _ "github.com/go-sql-driver/mysql"
 )
 
 var(
     user="root"
     password="(644000)xhs"
-    now time.Time
     db *sql.DB
 )
 
@@ -69,6 +69,15 @@ func (x *User)UserValidate(Type int,Value string)error{
     }
     return nil
 }
+
+func (x *User)UserMultiValidate(Type []int,Value string)error{
+    for _,t:=range Type{
+        if x.Authority==t{return nil}
+    }
+    return fmt.Errorf("This operation is only executable by a %s account.",Value)
+}
+
+func SelectDababase(){db.Exec("use fudanlms;")}
 
 //Add a book given its title,author and isbn. Only worked when using administrator account.
 func (x *User)AddBook(title,author,isbn string)error{
@@ -138,6 +147,7 @@ func (x *User)Register(id,password string,hash func(string)string)error{
     err=x.UserValidate(Admin,"admin");if err!=nil{return err}
     err=IDValidate(id);if err!=nil{return err}//check whether id is correct.
     s:=hash(password)//use sha256 to encrypt the password
+    db.Exec("use fudanlms;")
     _,err=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
     if err!=nil{return fmt.Errorf("Register %s:%v",id,err)}
     return nil
@@ -147,10 +157,11 @@ func (x *User)Register(id,password string,hash func(string)string)error{
 func (x *User)QueryBook(Value,Type string)([]Book,error){
     var err error
     var rows *sql.Rows
-    if x.Authority==Guest{return nil,fmt.Errorf("Guest cannot query books.")}
+    err=x.UserMultiValidate([]int{Admin,Student,Suspended},"admin/stu/suspended");if err!=nil{return nil,err}
     BookList:=[]Book{}
     Error:=func()([]Book,error){return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
     sql:=fmt.Sprintf("select * from books where %s=%s",Type,Value)
+    db.Exec("use fudanlms;")
     rows,err=db.Query(sql)
     if err!=nil{return Error()}
     defer rows.Close()
@@ -170,7 +181,7 @@ func (x *User)BorrowBook(isbn string)error{
     err=x.UserValidate(Student,"stu");if err!=nil{return err}
     err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
     if FindBook(isbn)==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
-    if FindRec(x.ID,isbn,"borrec")==true{return fmt.Errorf("Borrow record already exist.")}
+    if FindRec(x.ID,isbn,"borrec")==true{return fmt.Errorf("Borrow record(id:%s,isbn:%s) already exist.",x.ID,isbn)}
     rawsql:=`
     insert into borrec(id,isbn,bortime,deadline,extendtime)values
         (%s,%s,%q,%q,0);
@@ -184,6 +195,27 @@ func (x *User)BorrowBook(isbn string)error{
     return nil
 }
 
+func (x *User)BorrowQuery(Type string)([]Book,error){
+    var err error
+    var rows *sql.Rows
+    Error:=func()([]Book,error){return nil,fmt.Errorf("BorrowQuery(Type:%s):%v",Type,err)}
+    err=x.UserMultiValidate([]int{Student,Suspended},"stu/suspended");if err!=nil{return Error()}
+    var BookList,bookList []Book
+    isbn:=""
+    sql:=fmt.Sprintf("select isbn from %s where id=%s",Type,x.ID)
+    db.Exec("use fudanlms;")
+    rows,err=db.Query(sql)
+    if err!=nil{return Error()}
+    defer rows.Close()
+    for rows.Next(){
+        err=rows.Scan(&isbn);if err!=nil{return Error()}
+        bookList,err=x.QueryBook(isbn,"isbn");if err!=nil{return Error()}
+        BookList=append(BookList,bookList...)
+    }
+    err=rows.Err();if err!=nil{return Error()}
+    return BookList,nil
+}
+
 func main(){
     var err error
     db,err=sql.Open("mysql",fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/",user,password))
@@ -195,6 +227,17 @@ func main(){
     db.Exec("use fudanlms;");
     //CreateTable()
     //adminUser:=User{"Admin","123456",Admin}
-    //stuUser:=User{"18307130090","(644000)xhs",Student}
+    stuUser:=User{"18307130090","(644000)xhs",Student}
+    for _,isbn:=range []string{"9787535492821","9787549550166","9787567748996","9787567748997"}{
+        err=stuUser.BorrowBook(isbn)
+        checkErr(err)
+    }
+    var BookList []Book
+    BookList,err=stuUser.BorrowQuery("borrec")
+    checkErr(err)
+    db.Exec("use fudanlms;")
+    _,err=db.Exec("delete from borrec;")
+    checkErr(err)
+    fmt.Println(BookList)
     fmt.Println("Done.")
 }
