@@ -7,7 +7,7 @@ import(
 
 
 type User struct{
-    ID,Password string
+    ID string
     Authority int
 }
 
@@ -29,24 +29,22 @@ type Book struct{
 func (x Book)String()string{return fmt.Sprintf("Title:%s\tAuthor:%s\tISBN:%s",x.Title,x.Author,x.ISBN)}
 
 type BorRec struct{
-    User *User
-    Book *Book
+    UserID,BookISBN,BookTitle string
     BorTime,Deadline time.Time
     ExtendTime int
 }
 
 func (x BorRec)String()string{
-    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tDeadline:%s\tExtendTime:%d",x.User.ID,x.Book.Title,x.BorTime.Format(TimeFormat),x.Deadline.Format(TimeFormat),x.ExtendTime)
+    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBookISBN:%s\tBorTime:%s\tDeadline:%s\tExtendTime:%d",x.UserID,x.BookTitle,x.BookISBN,x.BorTime.Format(TimeFormat),x.Deadline.Format(TimeFormat),x.ExtendTime)
 }
 
 type RetRec struct{
-    User *User
-    Book *Book
+    UserID,BookISBN,BookTitle string
     BorTime,RetTime time.Time
 }
 
 func (x RetRec)String()string{
-    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBorTime:%s\tRetTime:%s",x.User.ID,x.Book.Title,x.BorTime.Format(TimeFormat),x.RetTime.Format(TimeFormat))
+    return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBookISBN:%s\tBorTime:%s\tRetTime:%s",x.UserID,x.BookTitle,x.BookISBN,x.BorTime.Format(TimeFormat),x.RetTime.Format(TimeFormat))
 }
 
 var rawsql=[]string{
