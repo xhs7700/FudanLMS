@@ -87,4 +87,14 @@ var RawSQLStatement=[]string{
     );
     `,
     "delete from retrec;",
+    `
+    create table if not exists rmrec(
+        isbn char(13) primary key,
+        title varchar(64),
+        author varchar(64),
+        removetime datetime,
+        reason varchar(128)
+    );
+    `,
+    "delete from rmrec;",
 }

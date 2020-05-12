@@ -51,20 +51,6 @@ func ISBNValidate(isbn string)error{
     return nil
 }
 
-func (x *User)UserValidate(Type int,Value string)error{
-    if x.Authority!=Type{
-        return fmt.Errorf("This operation is only executable by a %s account.",Value)
-    }
-    return nil
-}
-
-func (x *User)UserMultiValidate(Type []int,Value string)error{
-    for _,t:=range Type{
-        if x.Authority==t{return nil}
-    }
-    return fmt.Errorf("This operation is only executable by a %s account.",Value)
-}
-
 func SelectDatabase(){db.Exec("use fudanlms;")}
 
 //Add a book given its title,author and isbn. Only worked when using administrator account.
@@ -147,15 +133,22 @@ func FindRetRec(id,isbn string)(RetRec,bool){
 }
 
 //Remove a book given its isbn. Only worked when using administrator account and this book exists.
-func RemoveBook(isbn string)error{
+func RemoveBook(isbn,reason string)error{
     var err error
     var ok bool
+    var book Book
     err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
-    if _,ok=FindBook(isbn);ok==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
+    book,ok=FindBook(isbn)
+    if ok==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
     sqls:=fmt.Sprintf("delete from books where isbn=%s;",isbn)
     SelectDatabase()
     _,err=db.Exec(sqls)
-    if err!=nil{return fmt.Errorf("RemoveBook %s:%v",isbn,err)}
+    if err!=nil{return fmt.Errorf("RemoveBook-delete %s:%v",isbn,err)}
+    rawsql:="insert into rmrec values(%s,%q,%q,%q,%q)"
+    now:=time.Now().Format(TimeFormat)
+    sqls=fmt.Sprintf(rawsql,book.ISBN,book.Title,book.Author,now,reason)
+    SelectDatabase();_,err=db.Exec(sqls)
+    if err!=nil{return fmt.Errorf("RemoveBook-insert %s:%v",isbn,err)}
     return nil
 }
 
@@ -235,7 +228,16 @@ func QueryBook(Value,Type string)([]Book,error){
     var rows *sql.Rows
     BookList:=[]Book{}
     Error:=func()([]Book,error){return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
-    sqls:=fmt.Sprintf("select * from books where %s=%q",Type,Value)
+    if Type=="isbn"&&Value!="*"{
+        err=ISBNValidate(Value)
+        if err!=nil{return nil,err}
+    }
+    var sqls string
+    if Value=="*"{
+        sqls=fmt.Sprintf("select * from books;")
+    }else{
+        sqls=fmt.Sprintf("select * from books where %s=%q;",Type,Value)
+    }
     //fmt.Println(sqls)
     SelectDatabase()
     rows,err=db.Query(sqls)
@@ -274,48 +276,78 @@ func BorrowBook(id,isbn string,intime time.Time)error{
     return nil
 }
 
-func BorrowQuery(id,Type string)([]Book,error){
+func BorRecQuery(id string)([]BorRec,error){
     var err error
-    var ok bool
     var rows *sql.Rows
-    Error:=func()([]Book,error){return nil,fmt.Errorf("BorrowQuery(Type:%s):%v",Type,err)}
+    Error:=func()([]BorRec,error){return nil,fmt.Errorf("BorRecQuery(id:%s):%v",id,err)}
     err=IDValidate(id);if err!=nil{return nil,err}//check whether id is correct.
-    var BookList []Book
-    var book Book
-    isbn:=""
-    sqls:=fmt.Sprintf("select isbn from %s where id=%s",Type,id)
+    var BorRecList []BorRec
+    var bortime,deadline time.Time
+    isbn,extendtime:="",0
+    sqls:=fmt.Sprintf("select isbn,bortime,deadline,extendtime from borrec where id=%s",id)
     SelectDatabase()
     rows,err=db.Query(sqls)
     if err!=nil{return Error()}
     defer rows.Close()
     for rows.Next(){
-        err=rows.Scan(&isbn);if err!=nil{return Error()}
+        err=rows.Scan(&isbn,&bortime,&deadline,&extendtime)
+        if err!=nil{return Error()}
         //bookList,err=QueryBook(isbn,"isbn");if err!=nil{return Error()}
-        book,ok=FindBook(isbn);if ok==false{return nil,fmt.Errorf("BorrowQuery(Type:%s,isbn:%s):cannot find such book.",Type,isbn)}
-        BookList=append(BookList,book)
+        book,_:=FindBook(isbn)
+        borrec:=BorRec{id,isbn,book.Title,bortime,deadline,extendtime}
+        BorRecList=append(BorRecList,borrec)
     }
     err=rows.Err();if err!=nil{return Error()}
-    return BookList,nil
+    return BorRecList,nil
 }
 
-func GetDeadline(id,isbn string)(time.Time,error){
+func RetRecQuery(id string)([]RetRec,error){
     var err error
-    err=IDValidate(id);if err!=nil{return time.Now(),err}//check whether id is correct.
-    err=ISBNValidate(isbn);if err!=nil{return time.Now(),err}//check whether isbn is correct.
-    borrec,ok:=FindBorRec(id,isbn);if ok==false{return time.Now(),fmt.Errorf("GetDeadline(id:%s,isbn:%s):cannot find such BorRec.",id,isbn)}
-    return borrec.Deadline,nil
+    var rows *sql.Rows
+    Error:=func()([]RetRec,error){return nil,fmt.Errorf("RetRecQuery(id:%s):%v",id,err)}
+    err=IDValidate(id);if err!=nil{return nil,err}//check whether id is correct.
+    var RetRecList []RetRec
+    var bortime,rettime time.Time
+    isbn:=""
+    sqls:=fmt.Sprintf("select isbn,bortime,rettime from retrec where id=%s",id)
+    SelectDatabase()
+    rows,err=db.Query(sqls)
+    if err!=nil{return Error()}
+    defer rows.Close()
+    for rows.Next(){
+        err=rows.Scan(&isbn,&bortime,&rettime)
+        if err!=nil{return Error()}
+        book,_:=FindBook(isbn)
+        retrec:=RetRec{id,isbn,book.Title,bortime,rettime}
+        RetRecList=append(RetRecList,retrec)
+    }
+    err=rows.Err();if err!=nil{return Error()}
+    return RetRecList,nil
 }
 
-func ExtendDeadline(id,isbn string)(bool,error){
+func GetDeadline(id,isbn string)(BorRec,error){
+    var err error
+    err=IDValidate(id);if err!=nil{return BorRec{},err}//check whether id is correct.
+    err=ISBNValidate(isbn);if err!=nil{return BorRec{},err}//check whether isbn is correct.
+    borrec,ok:=FindBorRec(id,isbn);if ok==false{return BorRec{},fmt.Errorf("GetDeadline(id:%s,isbn:%s):cannot find such BorRec.",id,isbn)}
+    return borrec,nil
+}
+
+func ExtendDeadline(id,isbn string,auth,times int)(BorRec,error){
     var err error
     var deadline time.Time
     var extendtime int
-    err=IDValidate(id);if err!=nil{return false,err}//check whether id is correct.
-    err=ISBNValidate(isbn);if err!=nil{return false,err}//check whether isbn is correct.
-    borrec,ok:=FindBorRec(id,isbn);if ok==false{return false,fmt.Errorf("ExtendDeadline(id:%s,isbn:%s):cannot find such BorRec.",id,isbn)}
+    err=IDValidate(id);if err!=nil{return BorRec{},err}//check whether id is correct.
+    err=ISBNValidate(isbn);if err!=nil{return BorRec{},err}//check whether isbn is correct.
+    borrec,ok:=FindBorRec(id,isbn);if ok==false{return BorRec{},fmt.Errorf("ExtendDeadline(id:%s,isbn:%s):cannot find such BorRec.",id,isbn)}
     extendtime,deadline=borrec.ExtendTime,borrec.Deadline
-    if extendtime==3{return false,fmt.Errorf("the deadline of (id:%s,isbn:%s) has been extended for 3 times.",id,isbn)}
-    extendtime++;deadline=deadline.AddDate(0,0,7)
+    if extendtime==3{return BorRec{},fmt.Errorf("the deadline of (id:%s,isbn:%s) has been extended for 3 times.",id,isbn)}
+    if auth==Admin{
+        deadline=deadline.AddDate(0,0,7*times)
+    }else{
+        deadline=deadline.AddDate(0,0,7)
+        extendtime++
+    }
     rawsql:=`
     update borrec
     set deadline=%q , extendtime=%d
@@ -324,8 +356,9 @@ func ExtendDeadline(id,isbn string)(bool,error){
     sqls:=fmt.Sprintf(rawsql,deadline.Format(TimeFormat),extendtime,id,isbn)
     SelectDatabase()
     _,err=db.Exec(sqls)
-    if err!=nil{return false,fmt.Errorf("ExtendDeadline (id:%s,isbn:%s):%v",id,isbn,err)}
-    return true,nil
+    if err!=nil{return BorRec{},fmt.Errorf("ExtendDeadline (id:%s,isbn:%s):%v",id,isbn,err)}
+    borrec.ExtendTime,borrec.Deadline=extendtime,deadline
+    return borrec,nil
 }
 
 func OverdueCheck(id string)([]BorRec,error){

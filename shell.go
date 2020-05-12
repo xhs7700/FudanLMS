@@ -5,7 +5,9 @@ import(
     "strings"
     "bufio"
     "os"
+    "time"
     "github.com/howeyc/gopass"
+    "strconv"
 )
 
 func Readline()string{
@@ -34,7 +36,7 @@ func execLg(args []string)(User,error){
     psw=ReadPsw("Password:")
     user,ok,err:=Login(id,psw)
     if err!=nil{return User{},fmt.Errorf("execLg(id:%s,psw:%s):%v",id,psw,err)}
-    if ok==false{return User{},fmt.Errorf("execLg(id:%s,psw:%s):Wrong password or ID not exist.",id,psw)}
+    if ok==false{return User{},fmt.Errorf("Wrong password or ID not exist.")}
     return user,nil
 }
 
@@ -89,6 +91,128 @@ func execRg(args []string)error{
     return Register(id,psw1,auth)
 }
 
+func execAd(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    title,author,isbn:="","",""
+    fmt.Printf("Title:");title=Readline()
+    fmt.Printf("Author:");author=Readline()
+    fmt.Printf("ISBN:");isbn=Readline()
+    return AddBook(title,author,isbn)
+}
+
+func execRm(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    isbn,reason:="",""
+    fmt.Printf("ISBN:");isbn=Readline()
+    fmt.Printf("Reason:");reason=Readline()
+    return RemoveBook(isbn,reason)
+}
+
+func (x User)execBorbk(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    isbn:=""
+    fmt.Printf("ISBN:");isbn=Readline()
+    err:=BorrowBook(x.ID,isbn,time.Now())
+    if err!=nil{return err}
+    borrec,_:=FindBorRec(x.ID,isbn)
+    fmt.Println(borrec)
+    return nil
+}
+
+func (x User)execFdrec(args []string)error{
+    var err error
+    length:=len(args)-1
+    if length!=1{return fmt.Errorf("argument number not match:arguments expected 1, have %d",length)}
+    id:=x.ID
+    if x.Authority==Admin{
+        fmt.Printf("ID:")
+        id=Readline()
+    }
+    bor:=func(id string)error{
+        BorRecList,err:=BorRecQuery(id);if err!=nil{return err}
+        fmt.Println("Borrow Records:")
+        for _,borrec:=range(BorRecList){fmt.Println("\t",borrec)}
+        return nil
+    }
+    ret:=func(id string)error{
+        RetRecList,err:=RetRecQuery(id);if err!=nil{return err}
+        fmt.Println("Returned Records:")
+        for _,retrec:=range(RetRecList){fmt.Println("\t",retrec)}
+        return nil
+    }
+    switch args[1]{
+    case "-b":
+        err=bor(id);if err!=nil{return err}
+    case "-r":
+        err=ret(id);if err!=nil{return err}
+    case "-a":
+        err=bor(id);if err!=nil{return err}
+        err=ret(id);if err!=nil{return err}
+    }
+    return nil
+}
+
+func (x User)execCkddl(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    id:=x.ID
+    if x.Authority==Admin{
+        fmt.Printf("ID:")
+        id=Readline()
+    }
+    fmt.Printf("ISBN:");isbn:=Readline()
+    borrec,err:=GetDeadline(id,isbn);if err!=nil{return err}
+    book,_:=FindBook(isbn)
+    output:=fmt.Sprintf("Title:%s\tDeadline:%s\tExtendTime:%d",book.Title,borrec.Deadline.Format(TimeFormat),borrec.ExtendTime)
+    fmt.Println(output)
+    return nil
+}
+
+func (x User)execCkdue(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    id:=x.ID
+    if x.Authority==Admin{
+        fmt.Printf("ID:")
+        id=Readline()
+    }
+    BorRecList,err:=OverdueCheck(id);if err!=nil{return err}
+    for _,borrec:=range(BorRecList){
+        book,_:=FindBook(borrec.BookISBN)
+        bortime:=borrec.BorTime.Format(TimeFormat)
+        deadline:=borrec.Deadline.Format(TimeFormat)
+        output:=fmt.Sprintf("Title:%s\tISBN:%s\tBorTime:%s\tDeadline:%s\tExtendTime:%d",book.Title,book.ISBN,bortime,deadline,borrec.ExtendTime)
+        fmt.Println(output)
+    }
+    return nil
+}
+
+func (x User)execExt(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    id,times,isbn:=x.ID,1,""
+    if x.Authority==Admin{
+        fmt.Printf("ID:");id=Readline()
+        fmt.Printf("ISBN:");isbn=Readline()
+        fmt.Printf("Extend Weeks:");times,_=strconv.Atoi(Readline())
+    }else{
+        fmt.Printf("ISBN:");isbn=Readline()
+    }
+    borrec,err:=ExtendDeadline(id,isbn,x.Authority,times)
+    if err!=nil{return err}
+    book,_:=FindBook(isbn)
+    output:=fmt.Sprintf("Title:%s\tDeadline:%s\tExtendTime:%d",book.Title,borrec.Deadline.Format(TimeFormat),borrec.ExtendTime)
+    fmt.Println(output)
+    return nil
+}
+
+func (x User)execRet(args []string)error{
+    if len(args)!=1{return fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
+    id,isbn:=x.ID,""
+    if x.Authority==Admin{fmt.Printf("ID:");id=Readline()}
+    fmt.Printf("ISBN:");isbn=Readline()
+    err:=ReturnBook(id,isbn)
+    if err!=nil{return err}
+    return nil
+}
+
 func (x User)execInput(input string)(User,error){
     var err error
     var args []string
@@ -124,6 +248,48 @@ func (x User)execInput(input string)(User,error){
         if x.Authority!=Admin{return x,fmt.Errorf("Only administrator account can register new account.")}
         err=execRg(args)
         if err!=nil{return x,err}
+    case "ad":
+        if x.Authority!=Admin{return x,fmt.Errorf("Only administrator account can register new account.")}
+        err=execAd(args)
+        if err!=nil{return x,err}
+    case "rm":
+        if x.Authority!=Admin{return x,fmt.Errorf("Only administrator account can register new account.")}
+        err=execRm(args)
+        if err!=nil{return x,err}
+    case "borbk":
+        switch x.Authority{
+        case Guest:
+            return x,fmt.Errorf("Please login.")
+        case Suspended:
+            return x,fmt.Errorf("Your account is suspended. Please return overdue books first.")
+        }
+        err=x.execBorbk(args)
+        if err!=nil{return x,err}
+    case "fdrec":
+        if x.Authority==Guest{return x,fmt.Errorf("Please login.")}
+        err=x.execFdrec(args)
+        if err!=nil{return x,err}
+    case "ckddl":
+        if x.Authority==Guest{return x,fmt.Errorf("Please login.")}
+        err=x.execCkddl(args)
+        if err!=nil{return x,err}
+    case "ckdue":
+        if x.Authority==Guest{return x,fmt.Errorf("Please login.")}
+        err=x.execCkdue(args)
+        if err!=nil{return x,err}
+    case "ext":
+        switch x.Authority{
+        case Guest:
+            return x,fmt.Errorf("Please login.")
+        case Suspended:
+            return x,fmt.Errorf("Your account is suspended. Please return overdue books first.")
+        }
+        err=x.execExt(args)
+        if err!=nil{return x,err}
+    case "ret":
+        if x.Authority==Guest{return x,fmt.Errorf("Please login.")}
+        err=x.execRet(args)
+        if err!=nil{return x,err}
     default:
         return x,fmt.Errorf("Undefined Operation.")
     }
@@ -134,7 +300,7 @@ func (x User)execInput(input string)(User,error){
 func (x User)HeaderPrint(){
     switch x.Authority{
     case Admin:
-        fmt.Print("FudanLMS %s(Admin) >",x.ID)
+        fmt.Print(fmt.Sprintf("FudanLMS %s(Admin) >",x.ID))
     case Student:
         fmt.Print(fmt.Sprintf("FudanLMS %s >",x.ID))
     case Suspended:
