@@ -28,24 +28,10 @@ const(
 //error check
 func checkErr(err error){if err!=nil{panic(err)}}
 
-//read a complete line from stdin
-func ScanLine()string{
-    var(
-        c byte
-        err error
-        b []byte
-    )
-    for err==nil{
-        _,err=fmt.Scanf("%c",&c)
-        if c!='\n'{b=append(b,c)}else{break}
-    }
-    return string(b)
-}
-
 //create tables in the database
 func CreateTable(){
     SelectDatabase()
-    for _,s:=range rawsql{//execute mysql statements stored in models.go in order
+    for _,s:=range RawSQLStatement{//execute mysql statements stored in models.go in order
         _,err:=db.Exec(s)
         checkErr(err)
     }
@@ -82,13 +68,12 @@ func (x *User)UserMultiValidate(Type []int,Value string)error{
 func SelectDatabase(){db.Exec("use fudanlms;")}
 
 //Add a book given its title,author and isbn. Only worked when using administrator account.
-func (x *User)AddBook(title,author,isbn string)error{
+func AddBook(title,author,isbn string)error{
     var err error
-    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
     err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
-    SelectDatabase()
-    _,err=db.Exec("insert into books (isbn,title,author)values(?,?,?)",isbn,title,author)
-    if err!=nil{return fmt.Errorf("AddBook %s:%v",title,err)}
+    sqls:=fmt.Sprintf("insert into books (isbn,title,author)values(%s,%q,%q);",isbn,title,author)
+    SelectDatabase();_,err=db.Exec(sqls)
+    if err!=nil{return fmt.Errorf("AddBook (title:%s):%v",title,err)}
     return nil
 }
 
@@ -162,14 +147,14 @@ func FindRetRec(id,isbn string)(RetRec,bool){
 }
 
 //Remove a book given its isbn. Only worked when using administrator account and this book exists.
-func (x *User)RemoveBook(isbn string)error{
+func RemoveBook(isbn string)error{
     var err error
     var ok bool
-    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
     err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
     if _,ok=FindBook(isbn);ok==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
+    sqls:=fmt.Sprintf("delete from books where isbn=%s;",isbn)
     SelectDatabase()
-    _,err=db.Exec("delete from books where isbn=?;",isbn)
+    _,err=db.Exec(sqls)
     if err!=nil{return fmt.Errorf("RemoveBook %s:%v",isbn,err)}
     return nil
 }
@@ -181,15 +166,67 @@ func hashcode(x string)string{
 }
 
 //add a student account given its ID(11 bit) and password. Only worked when using administrator account.
-func (x *User)Register(id,password string,hash func(string)string)error{
+func Register(id,password string,auth int)error{
     var err error
-    err=x.UserValidate(Admin,"admin");if err!=nil{return err}
     err=IDValidate(id);if err!=nil{return err}//check whether id is correct.
-    s:=hash(password)//use sha256 to encrypt the password
+    s:=hashcode(password)//use sha256 to encrypt the password
+    //fmt.Println(s,len(s))
     SelectDatabase()
-    _,err=db.Exec("insert into users(id,password,authority)values(?,?,?)",id,s,1)
-    if err!=nil{return fmt.Errorf("Register %s:%v",id,err)}
+    sqls:=fmt.Sprintf("insert into users(id,password,authority) values (%s,%q,%d);",id,s,auth)
+    //fmt.Println(sqls)
+    _,err=db.Exec(sqls)
+    if err!=nil{return fmt.Errorf("Register(id:%s,psw:%s):%v",id,password,err)}
     return nil
+}
+
+func Login(id,psw string)(User,bool,error){
+    var err error
+    err=IDValidate(id);if err!=nil{return User{},false,err}
+    s:=hashcode(psw)
+    SelectDatabase()
+    userpsw,auth:="",0;
+    raw:=fmt.Sprintf("select password,authority from users where id=%s;",id)
+    SelectDatabase()
+    err=db.QueryRow(raw).Scan(&userpsw,&auth)
+    switch{
+    case err==sql.ErrNoRows:
+        return User{},false,nil
+    case err==nil:
+        if userpsw!=s{
+            return User{},false,nil
+        }else{
+            return User{id,auth},true,nil
+        }
+    default:
+        panic(fmt.Errorf("Login:%v",err))
+    }
+}
+
+func RestorePassword(id,password string)error{
+    var err error
+    var ok bool
+    err=IDValidate(id);if err!=nil{return err}//check whether id is correct
+    if _,ok=FindUser(id);ok==false{return fmt.Errorf("RestorePassword(id:%s):id not existed.",id)}
+    s:=hashcode(password)
+    rawsql:=`
+    update users
+    set password=%q
+    where id=%s
+    `
+    sqls:=fmt.Sprintf(rawsql,s,id)
+    SelectDatabase(); _,err=db.Exec(sqls);if err!=nil{return fmt.Errorf("RestorePassword(id:%s):%v",id,err)}
+    return nil
+}
+
+func ChangePassword(id,oldpsw,newpsw string)(bool,error){
+    var err error
+    var ok bool
+    _,ok,err=Login(id,oldpsw)
+    if err!=nil{return false,fmt.Errorf("ChangePassword-Login(id:%s,oldpsw:%s,newpsw:%s):%v",id,oldpsw,newpsw,err)}
+    if ok==false{return false,nil}
+    err=RestorePassword(id,newpsw)
+    if err!=nil{return false,fmt.Errorf("ChangePassword-Restore(id:%s):%v",id,err)}
+    return true,nil
 }
 
 //query books by title author or ISBN, guests cannot query books.
@@ -198,9 +235,10 @@ func QueryBook(Value,Type string)([]Book,error){
     var rows *sql.Rows
     BookList:=[]Book{}
     Error:=func()([]Book,error){return nil,fmt.Errorf("QueryBook type(%s) value(%s):%v",Type,Value,err)}
-    sql:=fmt.Sprintf("select * from books where %s=%s",Type,Value)
+    sqls:=fmt.Sprintf("select * from books where %s=%q",Type,Value)
+    //fmt.Println(sqls)
     SelectDatabase()
-    rows,err=db.Query(sql)
+    rows,err=db.Query(sqls)
     if err!=nil{return Error()}
     defer rows.Close()
     for rows.Next(){
@@ -215,24 +253,24 @@ func QueryBook(Value,Type string)([]Book,error){
 }
 
 //only worked when using student account.
-func (x *User)BorrowBook(isbn string,intime time.Time)error{
+func BorrowBook(id,isbn string,intime time.Time)error{
     var err error
     var ok bool
-    err=x.UserValidate(Student,"stu");if err!=nil{return err}
+    err=IDValidate(id);if err!=nil{return err}
     err=ISBNValidate(isbn);if err!=nil{return err}//check whether isbn is correct.
     if _,ok=FindBook(isbn);ok==false{return fmt.Errorf("book(isbn=%s) not exist.",isbn)}
-    if _,ok=FindBorRec(x.ID,isbn);ok==true{return fmt.Errorf("Borrow record(id:%s,isbn:%s) already exist.",x.ID,isbn)}
+    if _,ok=FindBorRec(id,isbn);ok==true{return fmt.Errorf("Borrow record(id:%s,isbn:%s) already exist.",id,isbn)}
     rawsql:=`
     insert into borrec(id,isbn,bortime,deadline,extendtime)values
         (%s,%s,%q,%q,0);
     `
     now:=intime
     ddl:=now.AddDate(0,0,30)
-    sql:=fmt.Sprintf(rawsql,x.ID,isbn,now.Format(TimeFormat),ddl.Format(TimeFormat))
-    //fmt.Println(sql)
+    sqls:=fmt.Sprintf(rawsql,id,isbn,now.Format(TimeFormat),ddl.Format(TimeFormat))
+    //fmt.Println(sqls)
     SelectDatabase()
-    _,err=db.Exec(sql)
-    if err!=nil{return fmt.Errorf("User %s borrows book %s:%v",x.ID,isbn,err)}
+    _,err=db.Exec(sqls)
+    if err!=nil{return fmt.Errorf("User %s borrows book %s:%v",id,isbn,err)}
     return nil
 }
 
@@ -245,9 +283,9 @@ func BorrowQuery(id,Type string)([]Book,error){
     var BookList []Book
     var book Book
     isbn:=""
-    sql:=fmt.Sprintf("select isbn from %s where id=%s",Type,id)
+    sqls:=fmt.Sprintf("select isbn from %s where id=%s",Type,id)
     SelectDatabase()
-    rows,err=db.Query(sql)
+    rows,err=db.Query(sqls)
     if err!=nil{return Error()}
     defer rows.Close()
     for rows.Next(){
@@ -283,9 +321,9 @@ func ExtendDeadline(id,isbn string)(bool,error){
     set deadline=%q , extendtime=%d
     where id=%s and isbn=%s;
     `
-    sql:=fmt.Sprintf(rawsql,deadline.Format(TimeFormat),extendtime,id,isbn)
+    sqls:=fmt.Sprintf(rawsql,deadline.Format(TimeFormat),extendtime,id,isbn)
     SelectDatabase()
-    _,err=db.Exec(sql)
+    _,err=db.Exec(sqls)
     if err!=nil{return false,fmt.Errorf("ExtendDeadline (id:%s,isbn:%s):%v",id,isbn,err)}
     return true,nil
 }
@@ -328,7 +366,7 @@ func ReturnBook(id,isbn string)error{
 func SuspendCheck(id string)(bool,error){
     var err error
     var BorRecList []BorRec
-    BorRecList,err=OverdueCheck(id);if err!=nil{return fmt.Errorf("SuspendCheck(id:%s):%v",id,err)}
+    BorRecList,err=OverdueCheck(id);if err!=nil{return false,fmt.Errorf("SuspendCheck(id:%s):%v",id,err)}
     if len(BorRecList)>3{return true,nil}else{return false,nil}
 }
 
@@ -342,11 +380,15 @@ func main(){
     defer db.Close()
     checkErr(err)
     if err=db.Ping();err!=nil{log.Fatal(err)}
-    //db.Exec("create database fudanlms;")
-    //defer func(){db.Exec("drop database fudanlms;")}()
+    db.Exec("create database fudanlms;")
+    defer func(){db.Exec("drop database fudanlms;")}()
     SelectDatabase()
-    //CreateTable()
+    CreateTable()
+    err=Register("10000000000","admin",Admin)
+    checkErr(err)
+    ShellMain()
     //adminUser:=User{"Admin","123456",Admin}
+    /*
     stuUser:=User{"18307130090",Student}
     defer func(){SelectDatabase();db.Exec("delete from borrec;");db.Exec("delete from retrec;")}()
     for _,isbn:=range []string{"9787535492821","9787549550166","9787567748996","9787567748997"}{
@@ -359,4 +401,5 @@ func main(){
     err=ReturnBook("18307130090","9787535492821")
     checkErr(err)
     fmt.Println("Done.")
+    */
 }

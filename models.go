@@ -47,7 +47,7 @@ func (x RetRec)String()string{
     return fmt.Sprintf("UserID:%s\tBookTitle:%s\tBookISBN:%s\tBorTime:%s\tRetTime:%s",x.UserID,x.BookTitle,x.BookISBN,x.BorTime.Format(TimeFormat),x.RetTime.Format(TimeFormat))
 }
 
-var rawsql=[]string{
+var RawSQLStatement=[]string{
     `
     create table if not exists users(
         id char(11) primary key,
