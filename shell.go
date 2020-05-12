@@ -27,12 +27,9 @@ func ReadPsw(input string)string{
 }
 
 func execLg(args []string)(User,error){
-    //var err error
     if len(args)!=1{return User{},fmt.Errorf("Too much arguments:arguments expected 0, have %d",len(args)-1)}
     id,psw:="",""
-    fmt.Print("ID:")
-    id=Readline()
-    //fmt.Print("Password:");psw=Readline()
+    fmt.Print("ID:");id=Readline()
     psw=ReadPsw("Password:")
     user,ok,err:=Login(id,psw)
     if err!=nil{return User{},fmt.Errorf("execLg(id:%s,psw:%s):%v",id,psw,err)}
@@ -225,13 +222,15 @@ func (x User)execInput(input string)(User,error){
     }
 
     switch args[0]{
-    case "exit":
+    case "exit"://quit the shell program
         os.Exit(0)
-    case "lg":
+    case "quit"://quit the shell program
+        os.Exit(0)
+    case "lg"://login the account
         var newuser User
-        newuser,err=execLg(args)
+        newuser,err=execLg(args)//call the login-interacting function
         if err!=nil{return x,fmt.Errorf("execInput-lg:%v",err)}
-        return newuser,nil
+        return newuser,nil//switch to the new account
     case "fdbk":
         var BookList []Book
         BookList,err=execFdbk(args)
