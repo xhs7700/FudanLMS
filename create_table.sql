@@ -33,6 +33,7 @@ create table if not exists retrec(
     isbn char(13),
     bortime datetime,
     rettime datetime,
+    primary key(id,isbn,bortime),
     foreign key(id)references users(id),
     foreign key(isbn)references books(isbn)
 );

@@ -85,6 +85,7 @@ var RawSQLStatement = []string{
         isbn char(13),
         bortime datetime,
         rettime datetime,
+		primary key(id,isbn,bortime),
         foreign key(id)references users(id),
         foreign key(isbn)references books(isbn)
     );
@@ -95,7 +96,7 @@ var RawSQLStatement = []string{
         isbn char(13) primary key,
         title varchar(64),
         author varchar(64),
-        removetime datetime,
+        removetime datetime primary key,
         reason varchar(128)
     );
     `,
