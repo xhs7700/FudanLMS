@@ -17,6 +17,24 @@ var AuthorityDict = map[int]string{
 	3: "Guest",
 }
 
+const HelpText string = `List of all FudanLMS commands:
+help		display this help text
+exit		quit the shell program
+quit		same as exit
+lg		login the account
+fdbk		search for books by their authors, titles or ISBN
+chpsw		change current user's password
+rg		register new account
+ad		add new books
+rm		remove books with reasons
+borbk		borrow one book
+fdrec		query borrow/returned records
+ckddl		query one borrowed book's deadline
+ckdue		check whether one user has overdue books
+ext		extend one borrow record's deadline
+ret		return one borrowed book
+res		reset user's password`
+
 var TimeFormat = "2006-01-02 15:04:05"
 
 func (x User) String() string {

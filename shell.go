@@ -493,6 +493,8 @@ func (x User) execInput(input string) (User, error) {
 		if err != nil {
 			return x, err
 		}
+	case "help":
+		fmt.Println(HelpText)
 	default:
 		return x, fmt.Errorf("Undefined Operation.")
 	}
