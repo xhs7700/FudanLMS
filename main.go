@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/url"
 	"time"
-	//"strings"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -16,6 +15,7 @@ var (
 	user     = "root"
 	password = "(644000)xhs"
 	db       *sql.DB
+	EmptyUser=User{"20000000000",Guest}
 )
 
 const (
@@ -35,10 +35,33 @@ func checkErr(err error) {
 //create tables in the database
 func CreateTable() {
 	SelectDatabase()
-	for _, s := range RawSQLStatement { //execute mysql statements stored in models.go in order
-		_, err := db.Exec(s)
-		checkErr(err)
+	for _, s := range CreateTableSQL { //execute mysql statements stored in models.go in order
+		db.Exec(s)
+		//checkErr(err)
 	}
+}
+
+func InsertData(){
+	var err error
+	SelectDatabase()
+	for _,user:=range(InsertUserData){
+		_,err=db.Exec(user.String())
+		if err!=nil{checkErr(err)}
+	}
+	for _,book:=range(InsertBookData){
+		_,err=db.Exec(book.String())
+		if err!=nil{checkErr(err)}
+	}
+	for _,borrec:=range(InsertBorRecData){
+		_,err=db.Exec(borrec.String())
+		if err!=nil{checkErr(err)}
+	}
+}
+
+func DropDatabase(){
+	var err error
+	SelectDatabase()
+	_,err=db.Exec("drop database fudanlms;");checkErr(err)
 }
 
 //check whether given ID is valid(11 bit)
@@ -85,7 +108,7 @@ func FindUser(id string) (User, bool) {
 	err = db.QueryRow(raw).Scan(&newid, &auth)
 	switch {
 	case err == sql.ErrNoRows:
-		return User{}, false
+		return EmptyUser, false
 	case err == nil:
 		return User{newid, auth}, true
 	default:
@@ -168,6 +191,9 @@ func hashcode(x string) string {
 //called by function execRg in order to insert data into database
 func Register(id, password string, auth int) error {
 	var err error
+	if password==""{
+		return fmt.Errorf("Password cannot be empty.")
+	}
 	err = IDValidate(id) //check whether ID is valid(11 bit)
 	if err != nil {
 		return err
@@ -187,7 +213,7 @@ func Login(id, psw string) (User, bool, error) {
 	var err error
 	err = IDValidate(id) //check if ID is valid(11 bit)
 	if err != nil {
-		return User{}, false, err
+		return EmptyUser, false, err
 	}
 	s := hashcode(psw) //use SHA256 to encrypt the password stored in database
 	userpsw, auth := "", 0
@@ -196,10 +222,10 @@ func Login(id, psw string) (User, bool, error) {
 	err = db.QueryRow(raw).Scan(&userpsw, &auth) //execute the sql statement
 	switch {
 	case err == sql.ErrNoRows: //ID not found in database
-		return User{}, false, nil
+		return EmptyUser, false, nil
 	case err == nil:
 		if userpsw != s { //Input Password do not match
-			return User{}, false, nil
+			return EmptyUser, false, nil
 		} else { //Identity is verified.
 			return User{id, auth}, true, nil
 		}
@@ -211,12 +237,11 @@ func Login(id, psw string) (User, bool, error) {
 //called by function execRes in order to force set the password
 func ResetPassword(id, password string) error {
 	var err error
-	var ok bool
 	err = IDValidate(id) //check whether id is correct
 	if err != nil {
 		return err
 	}
-	if _, ok = FindUser(id); ok == false { //check whether id exist in database
+	if _, ok := FindUser(id); ok == false { //check whether id exist in database
 		return fmt.Errorf("RestorePassword(id:%s):id not existed.", id)
 	}
 	s := hashcode(password) //use SHA256 to encrypt the given password
@@ -256,6 +281,7 @@ func ChangePassword(id, oldpsw, newpsw string) (bool, error) {
 func QueryBook(Value, Type string) ([]Book, error) { //Type is in {isbn,author,title}
 	var err error
 	var rows *sql.Rows
+	//fmt.Println(Value,Type)
 	BookList := []Book{} //store the selected books
 
 	//Define the standard error-report function
@@ -283,6 +309,7 @@ func QueryBook(Value, Type string) ([]Book, error) { //Type is in {isbn,author,t
 	for rows.Next() { //read books info from returned query info
 		var book Book
 		err = rows.Scan(&book.ISBN, &book.Title, &book.Author)
+		//fmt.Println(book)
 		if err != nil {
 			return Error()
 		}
@@ -292,6 +319,8 @@ func QueryBook(Value, Type string) ([]Book, error) { //Type is in {isbn,author,t
 	if err != nil {
 		return Error()
 	}
+	//fmt.Println(BookList)
+	//fmt.Println("")
 	return BookList, nil
 }
 
@@ -340,6 +369,9 @@ func BorRecQuery(id string) ([]BorRec, error) {
 	err = IDValidate(id) //check whether given ID is valid(11 bit)
 	if err != nil {
 		return nil, err
+	}
+	if _, ok := FindUser(id); ok == false { //check whether id exist in database
+		return nil,fmt.Errorf("RestorePassword(id:%s):id not existed.", id)
 	}
 	var BorRecList []BorRec
 	var bortime, deadline time.Time
@@ -443,7 +475,7 @@ func ExtendDeadline(id, isbn string, auth, weeks int) (BorRec, error) {
 		return BorRec{}, fmt.Errorf("ExtendDeadline(id:%s,isbn:%s):cannot find such BorRec.", id, isbn)
 	}
 	extendtime, deadline = borrec.ExtendTime, borrec.Deadline
-	if extendtime == 3 && auth != Admin { //Student can only extend up to 3 times
+	if extendtime >= 3 && auth != Admin { //Student can only extend up to 3 times
 		return BorRec{}, fmt.Errorf("the deadline of (id:%s,isbn:%s) has been extended for 3 times.", id, isbn)
 	}
 	if auth == Admin {
@@ -479,7 +511,7 @@ func OverdueCheck(id string) ([]BorRec, error) {
 	var BorRecList []BorRec
 	sqls := fmt.Sprintf("select isbn from borrec where id=%s and deadline < %q", id, time.Now().Format(TimeFormat))
 	SelectDatabase()
-	fmt.Println(sqls)
+	//fmt.Println(sqls)
 	rows, err = db.Query(sqls)
 	if err != nil {
 		return Error()
@@ -534,12 +566,14 @@ func ReturnBook(id, isbn string) error {
 	return nil
 }
 
+//called by ShellMain at the end of every loop to check whether the account should be suspended.
 func (x User) SuspendCheck() (User, error) {
 	var err error
 	var BorRecList []BorRec
 	if x.Authority == Admin || x.Authority == Guest {
 		return x, nil
 	}
+	//fmt.Printf("authority=%s\n",AuthorityDict[x.Authority])
 	BorRecList, err = OverdueCheck(x.ID)
 	if err != nil {
 		return x, fmt.Errorf("SuspendCheck(id:%s):%v", x.ID, err)
@@ -570,38 +604,24 @@ func (x User) SuspendCheck() (User, error) {
 	return x, nil
 }
 
-func main() {
+func init(){
 	var err error
 	rawsql := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/?charset=utf8&loc=%s&parseTime=true",
 		user,
 		password,
 		url.QueryEscape("Asia/Shanghai"))
 	db, err = sql.Open("mysql", rawsql)
-	defer db.Close()
 	checkErr(err)
 	if err = db.Ping(); err != nil {
 		log.Fatal(err)
 	}
 	db.Exec("create database fudanlms;")
-	defer func() { db.Exec("drop database fudanlms;") }()
-	SelectDatabase()
 	CreateTable()
-	err = Register("10000000000", "admin", Admin)
-	checkErr(err)
+	InsertData()
+}
+
+func main() {
+	defer db.Close()
+	//defer DropDatabase()
 	ShellMain()
-	//adminUser:=User{"Admin","123456",Admin}
-	/*
-	   stuUser:=User{"18307130090",Student}
-	   defer func(){SelectDatabase();db.Exec("delete from borrec;");db.Exec("delete from retrec;")}()
-	   for _,isbn:=range []string{"9787535492821","9787549550166","9787567748996","9787567748997"}{
-	       err=stuUser.BorrowBook(isbn,time.Now())
-	       //err=stuUser.BorrowBook(isbn,time.Date(2018,10,29,0,0,0,0,time.Local))
-	       checkErr(err)
-	   }
-	   _,err=ExtendDeadline("18307130090","9787567748996")
-	   checkErr(err)
-	   err=ReturnBook("18307130090","9787535492821")
-	   checkErr(err)
-	   fmt.Println("Done.")
-	*/
 }

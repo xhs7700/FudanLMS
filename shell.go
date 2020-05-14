@@ -35,7 +35,7 @@ func ReadPsw(input string) string {
 //called by case "lg"
 func execLg(args []string) (User, error) {
 	if len(args) != 1 { //ensure that the input argument is only 'lg'
-		return User{}, fmt.Errorf("Too much arguments:arguments expected 0, have %d", len(args)-1)
+		return EmptyUser, fmt.Errorf("Too much arguments:arguments expected 0, have %d", len(args)-1)
 	}
 
 	//read the ID and Password
@@ -46,10 +46,10 @@ func execLg(args []string) (User, error) {
 
 	user, ok, err := Login(id, psw) //call the Login function, searching in database to verify the identity
 	if err != nil {                 //report error
-		return User{}, fmt.Errorf("execLg(id:%s,psw:%s):%v", id, psw, err)
+		return EmptyUser, fmt.Errorf("execLg(id:%s,psw:%s):%v", id, psw, err)
 	}
 	if ok == false { //report that ID and Password do not match
-		return User{}, fmt.Errorf("Wrong password or ID not exist.")
+		return EmptyUser, fmt.Errorf("Wrong password or ID not exist.")
 	}
 	return user, nil
 }
@@ -372,7 +372,7 @@ func (x User) execInput(input string) (User, error) {
 		}
 		args = append(args, arg)
 	}
-
+	if args==nil{return x,nil}
 	switch args[0] {
 	case "exit": //quit the shell program
 		os.Exit(0)

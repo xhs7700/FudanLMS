@@ -39,3 +39,14 @@ create table if not exists retrec(
 );
 
 delete from retrec;
+
+create table if not exists rmrec(
+    isbn char(13),
+    title varchar(64),
+    author varchar(64),
+    removetime datetime,
+    reason varchar(128),
+    primary key(isbn,removetime)
+);
+
+delete from rmrec;
