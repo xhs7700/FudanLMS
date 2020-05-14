@@ -381,7 +381,7 @@ func BorRecQuery(id string) ([]BorRec, error) {
 		return nil, err
 	}
 	if _, ok := FindUser(id); ok == false { //check whether id exist in database
-		return nil, fmt.Errorf("RestorePassword(id:%s):id not existed.", id)
+		return nil, fmt.Errorf("BorRecQuery(id:%s):id not existed.", id)
 	}
 	var BorRecList []BorRec
 	var bortime, deadline time.Time
@@ -517,6 +517,9 @@ func OverdueCheck(id string) ([]BorRec, error) {
 	err = IDValidate(id) //check whether the ID is valid(11 bit)
 	if err != nil {
 		return nil, err
+	}
+	if _, ok := FindUser(id); ok == false { //check whether id exist in database
+		return nil, fmt.Errorf("OverdueCheck(id:%s):id not existed.", id)
 	}
 	var BorRecList []BorRec
 	sqls := fmt.Sprintf("select isbn from borrec where id=%s and deadline < %q", id, time.Now().Format(TimeFormat))
