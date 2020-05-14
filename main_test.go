@@ -215,8 +215,8 @@ func TestBorRecQuery(t *testing.T) {
 		borrecs []BorRec
 		err     error
 	}{
-		//{"1830713009",nil,fmt.Errorf("notnil")},
-		//{"30000000000",nil,fmt.Errorf("notnil")},
+		{"1830713009",nil,fmt.Errorf("notnil")},
+		{"30000000000",nil,fmt.Errorf("notnil")},
 		{
 			"18307130090",
 			[]BorRec{
@@ -333,6 +333,7 @@ func TestOverdueCheck(t *testing.T) {
 			nil,
 		},
 		{"18307130090", nil, nil},
+		{"15307130090",nil,fmt.Errorf("notnil")},
 	}
 	for _, test := range tests {
 		id, borrecs, err := test.id, test.borrecs, test.err
