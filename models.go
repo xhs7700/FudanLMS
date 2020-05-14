@@ -170,19 +170,19 @@ This system is based on Go and MySQL.
 You can type "help" for help.`
 
 const HelpText string = `List of all FudanLMS commands:
-help		display this help text
-exit		quit the shell program
-quit		same as exit
-lg		login the account
-fdbk		search for books by their authors, titles or ISBN
-chpsw		change current user's password
-rg		register new account
-ad		add new books
-rm		remove books with reasons
-borbk		borrow one book
-fdrec		query borrow/returned records
-ckddl		query one borrowed book's deadline
-ckdue		check whether one user has overdue books
-ext		extend one borrow record's deadline
-ret		return one borrowed book
-res		reset user's password`
+help			display this help text
+exit			quit the shell program
+quit			same as exit
+lg			login the account
+fdbk -[ait] info	search for books by their authors, titles or ISBN
+chpsw			change current user's password
+rg			register new account
+ad			add new books
+rm			remove books with reasons
+borbk			borrow one book
+fdrec -[bar]		query borrow/returned records
+ckddl			query one borrowed book's deadline
+ckdue			check whether one user has overdue books
+ext			extend one borrow record's deadline
+ret			return one borrowed book
+res			reset user's password`

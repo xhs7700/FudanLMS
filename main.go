@@ -618,8 +618,6 @@ func init() {
 	fmt.Print("Username:")
 	user = Readline()
 	password = ReadPsw("Password:")
-	//user="root"
-	//password="(644000)xhs"
 	rawsql := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/?charset=utf8&loc=%s&parseTime=true",
 		user,
 		password,
