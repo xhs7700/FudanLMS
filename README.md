@@ -10,7 +10,7 @@
 "github.com/howeyc/gopass"
 ```
 
-运行main.exe。
+运行main.exe（Windows）或main（Linux）。
 
 ### 命令列表
 
@@ -44,7 +44,8 @@
 - insert_data.sql：预先读入的示例数据的插入数据部分（实际运行时并未使用该文件，而是写入models.go中）
 - main_test.go：对main.go中大部分函数的测试函数。
 - test.out：测试之后生成的结果。
-- main.exe：编译生成的可执行文件。
+- main.exe：编译生成的可执行文件（Windows环境）。
+- main：编译生成的可执行文件（Linux环境）
 
 ## 测试说明
 
