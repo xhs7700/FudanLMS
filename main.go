@@ -8,10 +8,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"net/url"
-	"os"
+	//"os"
 	"time"
 )
-
+//NOTICE!!!
+//You should fill in the blank of 'user' and 'password' to test this program.
+//'user' and 'password' is related to your mysql account.
 var (
 	user      = ""
 	password  = ""
@@ -614,10 +616,10 @@ func (x User) SuspendCheck() (User, error) {
 
 func init() {
 	var err error
-	fmt.Println("Please input your MySQL username and password.")
-	fmt.Print("Username:")
-	user = Readline()
-	password = ReadPsw("Password:")
+	//fmt.Println("Please input your MySQL username and password.")
+	//fmt.Print("Username:")
+	//user = Readline()
+	//password = ReadPsw("Password:")
 	rawsql := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/?charset=utf8&loc=%s&parseTime=true",
 		user,
 		password,
@@ -627,17 +629,13 @@ func init() {
 	if err = db.Ping(); err != nil {
 		log.Fatal(err)
 	}
+	db.Exec("create database fudanlms;")
+	//defer DropDatabase()
+	CreateTable()
+	InsertData()
 }
 
 func main() {
 	defer db.Close()
-	if len(os.Args) == 1 {
-		db.Exec("create database fudanlms;")
-		//defer DropDatabase()
-		CreateTable()
-		InsertData()
-	} else if os.Args[1] != "-r" {
-		checkErr(fmt.Errorf("Wrong Argument. The only valid argument is '-r'."))
-	}
 	ShellMain()
 }
