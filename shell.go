@@ -372,7 +372,9 @@ func (x User) execInput(input string) (User, error) {
 		}
 		args = append(args, arg)
 	}
-	if args==nil{return x,nil}
+	if args == nil {
+		return x, nil
+	}
 	switch args[0] {
 	case "exit": //quit the shell program
 		os.Exit(0)
@@ -519,6 +521,7 @@ func (x User) HeaderPrint() {
 
 func ShellMain() {
 	var err error
+	fmt.Println(WelcomeText)
 	input := ""
 	reader := bufio.NewReader(os.Stdin)
 	user := User{"20000000000", Guest}

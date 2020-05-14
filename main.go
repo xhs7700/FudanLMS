@@ -5,17 +5,18 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"net/url"
+	"os"
 	"time"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 var (
-	user     = "root"
-	password = "(644000)xhs"
-	db       *sql.DB
-	EmptyUser=User{"20000000000",Guest}
+	user      = ""
+	password  = ""
+	db        *sql.DB
+	EmptyUser = User{"20000000000", Guest}
 )
 
 const (
@@ -41,27 +42,34 @@ func CreateTable() {
 	}
 }
 
-func InsertData(){
+func InsertData() {
 	var err error
 	SelectDatabase()
-	for _,user:=range(InsertUserData){
-		_,err=db.Exec(user.String())
-		if err!=nil{checkErr(err)}
+	for _, user := range InsertUserData {
+		_, err = db.Exec(user.String())
+		if err != nil {
+			checkErr(err)
+		}
 	}
-	for _,book:=range(InsertBookData){
-		_,err=db.Exec(book.String())
-		if err!=nil{checkErr(err)}
+	for _, book := range InsertBookData {
+		_, err = db.Exec(book.String())
+		if err != nil {
+			checkErr(err)
+		}
 	}
-	for _,borrec:=range(InsertBorRecData){
-		_,err=db.Exec(borrec.String())
-		if err!=nil{checkErr(err)}
+	for _, borrec := range InsertBorRecData {
+		_, err = db.Exec(borrec.String())
+		if err != nil {
+			checkErr(err)
+		}
 	}
 }
 
-func DropDatabase(){
+func DropDatabase() {
 	var err error
 	SelectDatabase()
-	_,err=db.Exec("drop database fudanlms;");checkErr(err)
+	_, err = db.Exec("drop database fudanlms;")
+	checkErr(err)
 }
 
 //check whether given ID is valid(11 bit)
@@ -191,7 +199,7 @@ func hashcode(x string) string {
 //called by function execRg in order to insert data into database
 func Register(id, password string, auth int) error {
 	var err error
-	if password==""{
+	if password == "" {
 		return fmt.Errorf("Password cannot be empty.")
 	}
 	err = IDValidate(id) //check whether ID is valid(11 bit)
@@ -371,7 +379,7 @@ func BorRecQuery(id string) ([]BorRec, error) {
 		return nil, err
 	}
 	if _, ok := FindUser(id); ok == false { //check whether id exist in database
-		return nil,fmt.Errorf("RestorePassword(id:%s):id not existed.", id)
+		return nil, fmt.Errorf("RestorePassword(id:%s):id not existed.", id)
 	}
 	var BorRecList []BorRec
 	var bortime, deadline time.Time
@@ -604,8 +612,14 @@ func (x User) SuspendCheck() (User, error) {
 	return x, nil
 }
 
-func init(){
+func init() {
 	var err error
+	fmt.Println("Please input your MySQL username and password.")
+	fmt.Print("Username:")
+	user = Readline()
+	password = ReadPsw("Password:")
+	//user="root"
+	//password="(644000)xhs"
 	rawsql := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/?charset=utf8&loc=%s&parseTime=true",
 		user,
 		password,
@@ -615,13 +629,17 @@ func init(){
 	if err = db.Ping(); err != nil {
 		log.Fatal(err)
 	}
-	db.Exec("create database fudanlms;")
-	CreateTable()
-	InsertData()
 }
 
 func main() {
 	defer db.Close()
-	//defer DropDatabase()
+	if len(os.Args) == 1 {
+		db.Exec("create database fudanlms;")
+		//defer DropDatabase()
+		CreateTable()
+		InsertData()
+	} else if os.Args[1] != "-r" {
+		checkErr(fmt.Errorf("Wrong Argument. The only valid argument is '-r'."))
+	}
 	ShellMain()
 }
